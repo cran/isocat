@@ -1,0 +1,391 @@
+---
+title: "Overview of package `isocat` (Isotope Clustering and Assignment Tools)"
+author: "Caitlin J. Campbell"
+date: "`r Sys.Date()`"
+output:
+  rmarkdown::html_vignette:
+    toc: true
+    keep_md: true
+vignette: >
+  %\VignetteIndexEntry{Isotope Clustering and Assignment Tools}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE, cache = FALSE}
+knitr::opts_chunk$set(
+  cache = FALSE,
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 6,
+  fig.height = 4
+)
+
+library(kableExtra)
+library(isocat)
+library(pvclust)
+library(rasterVis)
+library(ggplot2)
+library(viridisLite)
+library(gridExtra)
+library(dplyr)
+
+```
+
+**Contact Information:** Caitlin J. Campbell (<caitjcampbell@gmail.com>)
+
+
+# Overview
+
+The `isocat` package provides multiple tools for creating and quantitatively analyzing and summarizing probability-of-origin surfaces generated from stable isotope analyses of animal tissue. This vignette will walk users through a brief example for each function included in this vignette.
+
+```{r load_isocat}
+library(isocat)
+```
+
+# Loading example data
+
+`isocat` has example isoscape data included for a small extent of North America.
+
+Example isoscape:
+
+```{r load_isoscape_data}
+myiso <- rasterFromXYZ(isoscape)
+```
+
+Load example isoscape standard deviation surface:
+
+```{r load_isoscape_data_2}
+myiso_sd <- rasterFromXYZ(isoscape_sd)
+```
+```{r plot_isoscape_data}
+library(ggplot2,   quietly = TRUE)
+library(rasterVis, quietly = TRUE)
+library(gridExtra, quietly = TRUE)
+gglayers <-  list(
+  geom_tile(aes(fill = value)),
+  coord_equal(),
+  theme_bw(),
+  scale_x_continuous(name = "Long", expand = c(0,0)),
+  scale_y_continuous(name = "Lat", expand = c(0,0))
+)
+lab1 <- list(
+  gglayers, 
+  scale_fill_gradient(name = expression(paste(delta, "D (\u2030)")), low = 'grey10', high = 'grey90')
+  )
+
+gridExtra::grid.arrange( 
+  gplot(myiso) + lab1 + ggtitle("Example Isoscape"), 
+  gplot(myiso_sd) + lab1 + ggtitle("Standard Deviation"),
+  ncol = 2
+  )
+  
+```
+
+# Creating a probability-of-origin surface
+
+To create a probability-of-origin map, we first import or generate a dataframe containing:
+
+1) Individual IDs
+
+2) Individual-level isotope data, transformed with a transfer function to reflect isoscape values.
+
+3) Standard deviation of isotope standard measurements, which are associated with machine accuracy.
+
+```{r example_dataframe}
+n <- 6 # Number of example rasters
+set.seed(1)
+df <- data.frame(
+  ID = LETTERS[1:n], 
+  isotopeValue = sample(cellStats(myiso, "min"):cellStats(myiso, "max"), n, replace = TRUE), 
+  SD_indv = rep(5, n)
+  )
+kableExtra::kable(df)
+```
+
+The contents of these columns are passed to the function `isotopeAssignmentModel` as vectors, along with the object names of isoscape and isoscape-SD objects. If parallel processing is specified, the function creates and deploys clusters using the `doParallel` package. The output is a RasterStack with layers named corresponding to the individual IDs.
+
+```{r prob_of_orgin_surface, fig.width=6, fig.height=3}
+assignmentModels <- isotopeAssignmentModel(
+  ID = df$ID,
+  isotopeValue = df$isotopeValue, 
+  SD_indv = df$SD_indv, 
+  precip_raster = myiso, 
+  precip_SD_raster = myiso_sd, 
+  nClusters = FALSE
+  )
+
+# Plot.
+ggProb <- list(
+  facet_wrap(~ variable),
+  scale_fill_gradient(name = "Probability\nOf Origin", low = 'darkblue', high = 'yellow') 
+  )
+
+gplot(assignmentModels) + gglayers + ggProb
+```
+
+# Comparing surfaces
+
+## Metric of surface similarity
+
+To compare probability-of-origin surfaces, we apply Schoener's D metric. To simply compare two surfaces, we can apply `isocat`'s `schoenersD` function, which determines Schoener's D-metric of similarity between two surfaces. The D-value varies between 0 (completely dissimilar surfaces) and 1 (identical surfaces).
+
+```{r schoenersD}
+# Calculate Schoener's D-metric of spatial similarity between 
+# two of the example probability surfaces.
+
+schoenersD(assignmentModels[[1]], assignmentModels[[2]])
+```
+
+To compare multiple surfaces to one another, `isocat` includes a `simmatrixMaker` function to create a similarity matrix of the surfaces. The output is a symmetric matrix with row and column names corresponding to the layer names of the surfaces to be compared. The `nClusters` specification, as in the `isotopeAssignmentModel` function, generates a number of parallel processing clusters equal to the numeric value specified. If `csvSavePath` is included, a .csv file will also be written to the path specified. For large RasterStacks, this function can be quite processing-intensive and take some time.
+
+```{r simmatrix}
+mySimilarityMatrix <- simmatrixMaker(
+  assignmentModels,
+  nClusters = FALSE,
+  csvSavePath = FALSE
+)
+mySimilarityMatrix
+```
+## Clustering by similar origins
+
+To cluster individuals by similar origins, `isocat` relies on the titular function of the package `pvclust`. The input to this function is the similarity matrix (here, "simmatrix"). Distance measures and clustering methods are detailed in the `pvclust` package, so for more information on methods discussed here, see:
+
+```{r pvclusthelp, eval = F}
+help(pvclust)
+```
+
+### Clustering with bootstrapping
+
+The default distance measure built into this function is correlational distance, and 'average' as a clustering method. The number of bootstrap replications default to 1000, and nClusters specifies how many clusters to initiate for parallel processing through `doParallel`. The output of this is an object of class "pvclust".
+
+```{r clusterSimmatrix, warning = F}
+cS <- clusterSimmatrix(
+  simmatrix = mySimilarityMatrix,
+  dist_mthd = "correlation", 
+  hclust_mthd = "average",
+  nBoot = 1000,  
+  nClusters = FALSE,
+  r = seq(.7,1.4,by=.1)
+  )
+plot(cS)
+```
+
+### Clustering without bootstrapping
+
+If bootstrapped clustering is not desired, one could instead apply the `hclust` function from within the base `stats` package:
+
+```{r hclust_instead}
+hS <- hclust(dist(data.matrix(mySimilarityMatrix)))
+plot(hS)
+```
+
+Note that the output of the `pvclust` analysis also contains a nested object of class "hclust".
+
+### Project Clusters
+
+To divide individuals into a discrete number of groups with common origin, one might apply one or more options. In this example, we cut the tree relating individual origins at a given height. Users might alternatively cut with respect to bootstrap support of given groups, into a certain number of groups, or into groups optimizing k-means or another metric of within-group similarity for D-values or isotope tissue values.
+
+
+```{r cluster_cutting_code }
+myheight <- 0.05
+
+plot(as.dendrogram(cS$hclust), horiz = FALSE)
+abline(h = myheight, col = "red", lwd = 2, lty = 2)
+
+df$cluster <- dendextend::cutree(cS$hclust, h = myheight)
+
+kableExtra::kable(df)
+```
+
+#### Aggregate Surfaces
+
+For each group of individuals of common origin, create an aggregate surface of mean within-group probability of origin using the `meanAggregateClusterProbability` function. This function returns a RasterStack corresponding to each cluster fed into it. If specified as an integer, `nClust` parameter interfaces with `raster::clusterR` to create and apply apply $n$ multi-core clusters for faster processing.
+
+```{r Create_mean_aggregate_surfaces}
+meanSurfaces <- meanAggregateClusterProbability( 
+  indivIDs = df$ID, 
+  clusters = df$cluster, 
+  surfaces = assignmentModels, 
+  nClust = FALSE 
+  )
+
+gplot(meanSurfaces) + gglayers + ggProb
+```
+
+#### Summary Surface
+
+To visualize the general regions of a spatial range most associated with each aggregate surface, `isocat` includes a `projectSummaryMaxSurface` function. This function associates each cell of a spatial extent with the identity of a discrete RasterLayer the highest relative value at that location. The output is a ratified raster that, in this context, shows the regions of highest relative association with the aggregated origins of groups of individuals. This summary surface is not appropriate for summary statistics (which we recommend be applied to mean aggregate surfaces for individuals sharing common origins, if not to the individual origin maps themselves), but does serve as a visual summary of the relative regions of probable origins of each group.
+
+```{r summary_surface}
+summaryMap <- projectSummaryMaxSurface(surfaces = meanSurfaces, nClust = FALSE)
+
+gplot(summaryMap) + 
+  gglayers +
+  scale_fill_viridis_c(name = "Cluster")
+```
+
+# Post-processing surfaces
+
+
+- Cumulative Sum
+
+- Odds-Ratio
+
+- Quantile
+
+- Quantile-Simulation
+
+The relative strengths and performance of these approaches are explored in Campbell et al.'s "Refining assessment of the geographic origins of animals inferred from stable isotope data" (in prep).
+
+We will use an example probability surface in the following example. Let us also specify a sampling site at point $i,j$, indicated with a red circle.
+
+```{r example_surface}
+set.seed(42)
+p <- isotopeAssignmentModel(
+  ID = "Example",
+  isotopeValue = sample(-125:-25, 1), 
+  SD_indv = 5, 
+  precip_raster = myiso, 
+  precip_SD_raster = myiso_sd, 
+  nClusters = FALSE
+  )[[1]]
+
+# Example Point
+pt <- data.frame(x = -100, y = 40)
+ptDeets <- list(
+  geom_point(
+    data = pt, 
+    col = "red", shape = 1, size = 2,
+    aes(x = x, y = y)
+    )
+)
+
+ex_plot <- gplot(p) + gglayers + ggProb + ptDeets
+
+ex_hist <- data.frame(x = p[]) %>% 
+  ggplot(.) +
+  geom_density(aes(x = x)) +
+  scale_y_continuous(expand = c(0,0)) +
+  scale_x_continuous(name = "Probability Value") +
+  theme_bw() +
+  geom_vline(aes(xintercept = extract(p, pt)), linetype = "dashed", col = "red")
+
+gridExtra::grid.arrange(ex_plot, ex_hist, ncol = 2, widths = c(2,1)) 
+```
+
+## Cumulative Sum
+
+
+```{r make_cumulative_sum_surface, eval = T}
+CumSumEx <- makecumsumSurface(p)
+```
+
+
+```{r plot_cumulative_sum_surface, eval = T}
+cumsum_plot <- gplot(CumSumEx) + 
+  gglayers + ptDeets +
+  scale_fill_gradient(
+    name = "Cumulative Sum\nProbability\nOf Origin", low = 'darkblue', high = 'yellow') 
+
+cumsum_hist <- data.frame(x = CumSumEx[]) %>% 
+  ggplot(.) +
+  geom_density(aes(x = x)) +
+  scale_y_continuous(expand = c(0,0)) +
+  scale_x_continuous(name = "Cumulative Sum\nProbability Value") +
+  theme_bw() +
+  geom_vline(aes(xintercept = extract(CumSumEx, pt)), linetype = "dashed", col = "red")
+
+gridExtra::grid.arrange( cumsum_plot, cumsum_hist, ncol = 2, widths = c(2,1) ) 
+```
+
+
+## Odds-Ratio
+
+
+```{r odds_ratio_surface, eval = T}
+OddsRatioEx <- makeOddsSurfaces(p)
+```
+
+
+```{r eval_odds_ratio_surface}
+odds_plot <- gplot(OddsRatioEx) + 
+  gglayers + ptDeets +
+  scale_fill_gradient(
+    name = "Odds-Ratio\nProbability\nOf Origin", low = 'darkblue', high = 'yellow') 
+
+odds_hist <- data.frame(x = OddsRatioEx[]) %>% 
+  ggplot(.) +
+  geom_density(aes(x = x)) +
+  scale_y_continuous(expand = c(0,0)) +
+  scale_x_continuous(name = "Odds Ratio Value") +
+  theme_bw() +
+  geom_vline(aes(xintercept = extract(OddsRatioEx, pt)), linetype = "dashed", col = "red")
+
+gridExtra::grid.arrange( odds_plot, odds_hist, ncol = 2, widths = c(2,1) ) 
+```
+
+
+## Quantile
+
+
+```{r quantile_surface, eval = T}
+QuantileEx <- makeQuantileSurfaces(p)
+```
+
+
+```{r eval_quantile_surface}
+quantile_plot <- gplot(QuantileEx) + 
+  gglayers + ptDeets +
+  scale_fill_gradient(
+    name = "Quantile\nProbability\nOf Origin", low = 'darkblue', high = 'yellow') 
+
+quantile_hist <- data.frame(x = QuantileEx[]) %>% 
+  ggplot(.) +
+  geom_density(aes(x = x)) +
+  scale_y_continuous(expand = c(0,0)) +
+  scale_x_continuous(name = "Quantile Value") +
+  theme_bw() +
+  geom_vline(aes(xintercept = extract(QuantileEx, pt)), linetype = "dashed", col = "red")
+
+gridExtra::grid.arrange( quantile_plot, quantile_hist, ncol = 2, widths = c(2,1) ) 
+```
+
+
+## Quantile-Simulation
+
+Simulate a distribution fit to known-origin quantile values:
+```{r quantsim_values, eval = T}
+q <- rweibull(20000, 6, .98)
+q <- sample( q[ q >=0 & q <= 1 ], 10000, replace = TRUE)
+hist(q)
+```
+
+Create quantile-simulation surface:
+
+```{r quantsim_surface, eval = T}
+QuantSimEx <- makeQuantileSimulationSurface(
+  probabilitySurface = p, 
+  ValidationQuantiles = q,
+  rename = FALSE, rescale = TRUE
+  )
+```
+
+
+```{r eval_quantsim_surface, eval = T}
+quantsim_plot <- gplot(QuantSimEx) + 
+  gglayers + ptDeets +
+  scale_fill_gradient(
+    name = "Quantile-Simulation\nProbability\nOf Origin", low = 'darkblue', high = 'yellow') 
+
+quantsim_hist <- data.frame(x = QuantSimEx[]) %>% 
+  ggplot(.) +
+  geom_density(aes(x = x)) +
+  scale_y_continuous(expand = c(0,0)) +
+  scale_x_continuous(name = "Quantile-Simulation Value") +
+  theme_bw() +
+  geom_vline(aes(xintercept = extract(QuantSimEx, pt)), linetype = "dashed", col = "red")
+
+gridExtra::grid.arrange( quantsim_plot, quantsim_hist, ncol = 2, widths = c(2,1) ) 
+```
+
