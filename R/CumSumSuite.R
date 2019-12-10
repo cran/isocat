@@ -7,7 +7,7 @@
 #'
 #' @return Returns list of values representing cumulative sum of `val` values less than or equal to the input.
 #'
-#' @importFrom magrittr %>%
+#' @importFrom stats na.omit
 #'
 #' @examples
 #' vals <- 1:10
@@ -17,7 +17,8 @@
 cumsumbelow <- function(vals){
   if(class(vals) != "numeric" & class(vals) != "integer")
     stop("values entered must be numeric")
-  vals %>% purrr::map(~ vals[ vals <= . ] %>% sum(na.rm = TRUE) )
+  unlist( lapply(vals, function(x,y){
+      if(is.na(x)){ NA } else { sum(y[y <= x], na.rm = TRUE) } }, y = na.omit(vals)) )
 }
 
 
@@ -32,8 +33,11 @@ cumsumbelow <- function(vals){
 #'
 #' @return Returns RasterLayer rescaled to Cumulative Sum values.
 #'
+#' @aliases cumsum_surface
+#'
+#' @seealso \code{\link{cumsumAtSamplingLocation}}
+#'
 #' @inheritParams cumsumbelow
-#' @importFrom magrittr %>%
 #'
 #' @examples
 #' # Generate example probability surfaces.
@@ -66,17 +70,19 @@ makecumsumSurface <- function(indivraster, rescale = FALSE, rename = FALSE){
   vals <- NULL
 
   newsurface <- indivraster
-  newsurface[] <- indivraster[] %>%
-    cumsumbelow(.) %>%
-    unlist
+  newsurface[] <- cumsumbelow( indivraster[] )
 
   if(rescale == TRUE){
     new.min <- 0
     new.max <- 1
-    x.min <- vals[ vals <= raster::cellStats(indivraster, "min") ] %>%
-      sum(na.rm = TRUE)
-    x.max <- vals[ vals <= raster::cellStats(indivraster, "max") ] %>%
-      sum(na.rm = TRUE)
+    x.min <- sum(
+      vals[ vals <= raster::cellStats(indivraster, "min") ] ,
+      na.rm = TRUE
+      )
+    x.max <- sum(
+      vals[ vals <= raster::cellStats(indivraster, "max") ],
+      na.rm = TRUE
+      )
     newsurface <- new.min + (newsurface - x.min) * ((new.max - new.min) / (x.max - x.min))
   }
 
@@ -102,6 +108,8 @@ makecumsumSurface <- function(indivraster, rescale = FALSE, rename = FALSE){
 #' @param Lat Integer latitude
 #' @param Lon Integer longitude
 #'
+#' @aliases cumsum_at_point
+#' @seealso \code{\link{makecumsumSurface}}
 #'
 #' @examples
 #' # Generate example probability surface.
@@ -119,7 +127,7 @@ makecumsumSurface <- function(indivraster, rescale = FALSE, rename = FALSE){
 #' set.seed(1)
 #' x <- sample( which( !is.na(exampleSurface[]) ), size = 1)
 #' pt <- raster::xyFromCell(exampleSurface, x)
-#' cumsumAtSamplingLocation(exampleSurface, Lat = pt[2], Lon = pt[1])
+#' cumsumAtSamplingLocation(indivraster = exampleSurface, Lat = pt[2], Lon = pt[1])
 #'
 #' @export
 cumsumAtSamplingLocation <- function(indivraster, Lat, Lon){
@@ -131,7 +139,7 @@ cumsumAtSamplingLocation <- function(indivraster, Lat, Lon){
     indivcoords <- sp::SpatialPoints(cbind(Lon,Lat))
     p_atPoint <- raster::extract(indivraster, indivcoords)
 
-    if( class(p_atPoint) == "matrix" ){
+    if( "matrix" %in% class(p_atPoint) | "array" %in% class(p_atPoint) ){
       if( length(p_atPoint) != 1) {
         stop("extracted value at coordinates must be of length one.")
       } else
