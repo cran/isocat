@@ -55,7 +55,8 @@ set.seed(1)
 df <- data.frame(
   ID = LETTERS[1:n], 
   isotopeValue = sample(cellStats(myiso, "min"):cellStats(myiso, "max"), n, replace = TRUE), 
-  SD_indv = rep(5, n)
+  SD_indv = rep(5, n),
+  stringsAsFactors = FALSE 
   )
 kableExtra::kable(df)
 
