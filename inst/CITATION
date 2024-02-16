@@ -1,13 +1,13 @@
 citHeader("To cite isocat in publications use:")
 
-citEntry(
-  entry    = "Article",
+bibentry(
+  bibtype  = "Article",
   title    = "Advancing interpretation of stable isotope assignment maps: comparing and summarizing origins of known-provenance migratory bats",
-  author   = personList(
-    as.person("Caitlin J. Campbell"),
-    as.person("Matthew C. Fitzpatrick"),
-    as.person("Hannah B. Vander Zanden"),
-    as.person("David M. Nelson")
+  author   = c(
+    person("Caitlin J. Campbell"),
+    person("Matthew C. Fitzpatrick"),
+    person("Hannah B. Vander Zanden"),
+    person("David M. Nelson")
     ),
   journal  = "Animal Migration",
   year     = "2020",
@@ -24,10 +24,10 @@ citEntry(
   )
   )
 
-citEntry(
-  entry    = "Misc",
+bibentry(
+  bibtype  = "Misc",
   title    = "{isocat}: Isotope Origin Clustering and Assignment Tools",
-  author   = personList(
+  author   = c(
     as.person("Caitlin J. Campbell")
     ),
   year     = "2020",

@@ -1,7 +1,7 @@
 Package: isocat
 Type: Package
 Title: Isotope Origin Clustering and Assignment Tools
-Version: 0.2.6
+Version: 0.3.0
 Authors@R: person(
   "Caitlin", "Campbell", 
   email = "caitjcampbell@gmail.com",
@@ -24,16 +24,16 @@ License: CC0
 Encoding: UTF-8
 Language: en-US
 LazyData: true
-RoxygenNote: 7.1.1
-Depends: R (>= 2.10), utils, raster
-Imports: stats, plyr, sp, magrittr, foreach
+RoxygenNote: 7.2.2
+Depends: R (>= 3.0), utils, raster
+Imports: stats, plyr, sp, magrittr, methods, foreach,
 Suggests: dendextend, doParallel, dplyr, ggplot2, gridExtra,
         kableExtra, knitr, parallel, pvclust, rmarkdown, rasterVis,
         viridisLite
 VignetteBuilder: knitr
 NeedsCompilation: no
-Packaged: 2020-07-02 17:12:27 UTC; cjcampbell
+Packaged: 2024-02-15 23:52:01 UTC; cjcampbell
 Author: Caitlin Campbell [aut, cre] (<https://orcid.org/0000-0002-8199-7775>)
 Maintainer: Caitlin Campbell <caitjcampbell@gmail.com>
 Repository: CRAN
-Date/Publication: 2020-07-03 16:30:12 UTC
+Date/Publication: 2024-02-16 00:10:02 UTC
